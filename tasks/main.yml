@@ -1,0 +1,42 @@
+---
+- name: Ensure unzip is installed for unarchive module
+  package:
+    name: unzip
+    state: present
+
+- name: Check current Packer version
+  shell: "packer version | cut -d ' ' -f2 | sed 's/v//'"
+  register: current_version
+  changed_when: false
+
+- name: Install github3.py for github_release module on localhost
+  pip:
+    name: github3.py
+  become: false
+  run_once: true
+  delegate_to: localhost
+  when: packer_version is not defined
+
+- name: Check latest release of a public repository
+  github_release:
+    user: hashicorp
+    repo: packer
+    action: latest_release
+  register: latest_version
+  become: false
+  run_once: true
+  delegate_to: localhost
+  when: packer_version is not defined
+
+- name: Use latest version
+  set_fact:
+    packer_version: "{{ latest_version.tag | regex_replace('v') }}"
+  when: packer_version is not defined
+
+- name: Download and unarchive Packer
+  unarchive:
+    src: https://releases.hashicorp.com/packer/{{ packer_version }}/packer_{{ packer_version }}_linux_{{ packer_arch }}.zip
+    dest: "{{ packer_bin_path }}"
+    remote_src: true
+    mode: 0755
+  when: current_version.stdout != packer_version
